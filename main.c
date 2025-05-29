@@ -1,79 +1,59 @@
-/**
- * Copyright (c) 2022 Andrew McDonnell
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
-
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
-
 #include "lwip/pbuf.h"
 #include "lwip/udp.h"
+#include "lwip/ip_addr.h"
 
-#define UDP_PORT 5000
-#define BEACON_MSG_LEN_MAX 127
-#define BEACON_TARGET "255.255.255.255"
-#define BEACON_INTERVAL_MS 1000
+#define WIFI_SSID "LabirasNote"
+#define WIFI_PASSWORD "marcelino"
+#define DEST_IP "192.168.137.120" // IP da máquina que roda o Godot
+#define DEST_PORT 5000
 
-void run_udp_beacon() {
-    struct udp_pcb* pcb = udp_new();
+void send_udp_packet(struct udp_pcb *pcb, ip_addr_t *addr, u16_t port, const char *message) {
+    struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, strlen(message), PBUF_RAM);
+    if (!p) return;
 
-    ip_addr_t addr;
-    ipaddr_aton(BEACON_TARGET, &addr);
-
-    int counter = 0;
-    while (true) {
-        struct pbuf *p = pbuf_alloc(PBUF_TRANSPORT, BEACON_MSG_LEN_MAX+1, PBUF_RAM);
-        char *req = (char *)p->payload;
-        memset(req, 0, BEACON_MSG_LEN_MAX+1);
-        snprintf(req, BEACON_MSG_LEN_MAX, "%d\n", counter);
-        err_t er = udp_sendto(pcb, p, &addr, UDP_PORT);
-        pbuf_free(p);
-        if (er != ERR_OK) {
-            printf("Failed to send UDP packet! error=%d", er);
-        } else {
-            printf("Sent packet %d\n", counter);
-            counter++;
-        }
-
-        // Note in practice for this simple UDP transmitter,
-        // the end result for both background and poll is the same
-
-#if PICO_CYW43_ARCH_POLL
-        // if you are using pico_cyw43_arch_poll, then you must poll periodically from your
-        // main loop (not from a timer) to check for Wi-Fi driver or lwIP work that needs to be done.
-        cyw43_arch_poll();
-        sleep_ms(BEACON_INTERVAL_MS);
-#else
-        // if you are not using pico_cyw43_arch_poll, then WiFI driver and lwIP work
-        // is done via interrupt in the background. This sleep is just an example of some (blocking)
-        // work you might be doing.
-        sleep_ms(BEACON_INTERVAL_MS);
-#endif
-    }
+    memcpy(p->payload, message, strlen(message));
+    udp_sendto(pcb, p, addr, port);
+    pbuf_free(p);
 }
 
 int main() {
     stdio_init_all();
-
+    sleep_ms(5000); // Espera o USB conectar
     if (cyw43_arch_init()) {
-        printf("failed to initialise\n");
-        return 1;
+        printf("WiFi init failed\n");
+        return -1;
     }
-
     cyw43_arch_enable_sta_mode();
 
-    printf("Connecting to Wi-Fi...\n");
-    if (cyw43_arch_wifi_connect_timeout_ms("LabirasNote", "marcelino", CYW43_AUTH_WPA2_AES_PSK, 30000)) {
-        printf("failed to connect.\n");
-        return 1;
-    } else {
-        printf("Connected.\n");
+    printf("Conectando ao WiFi...\n");
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 10000)) {
+        printf("Falha na conexão WiFi\n");
+        return -1;
     }
-    run_udp_beacon();
-    cyw43_arch_deinit();
+    printf("Conectado!\n");
+
+    struct udp_pcb *pcb = udp_new();
+    if (!pcb) {
+        printf("Erro criando PCB UDP\n");
+        return -1;
+    }
+
+    ip_addr_t dest_addr;
+    ipaddr_aton(DEST_IP, &dest_addr);
+
+    int count = 0;
+    while (true) {
+        char buffer[64];
+        snprintf(buffer, sizeof(buffer), "packet %d", count++);
+        send_udp_packet(pcb, &dest_addr, DEST_PORT, buffer);
+        printf("Sent %s\n", buffer);
+        sleep_ms(1000);
+    }
+
     return 0;
 }
