@@ -38,8 +38,8 @@ int main() {
         mpu6050_read_raw(&ax, &ay, &az);
         get_joystick_direction(dirX, dirY);
         read_buttons(&valueA, &valueB);
-        float inclinacao = mpu6050_get_inclination(ax, ay, az);
-        snprintf(buffer, sizeof(buffer), "ButtonA = %d, ButtonB = %d, Analog_Y = %s, Analog_X = %s, Climb = %.2f", valueA, valueB, dirX, dirY, inclinacao);
+        float inclination = mpu6050_get_inclination(ax, ay, az);
+        snprintf(buffer, sizeof(buffer), "ButtonA = %d, ButtonB = %d, Analog_Y = %s, Analog_X = %s, Climb = %.2f", valueA, valueB, dirX, dirY, inclination);
         send_udp_packet(pcb, &dest_addr, DEST_PORT, buffer);
         printf("Sent %s\n", buffer);
         sleep_ms(10);
